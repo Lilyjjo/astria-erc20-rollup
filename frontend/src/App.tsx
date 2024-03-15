@@ -160,7 +160,7 @@ function App() {
         <a href="https://twitter.com/AstriaOrg" target="_blank">
           <i className="nes-icon close is-medium"></i>
         </a>
-        <a href="https://github.com/astriaorg/messenger-rollup" target="_blank">
+        <a href="https://github.com/lilyjjo/astria-erc20-rollup" target="_blank">
           <i className="nes-icon github is-medium"></i>
         </a>
       </p>
