@@ -36,10 +36,14 @@ just docker-build
 
 ## Helpful things
 ```bash
-curl -kv localhost:8080/message \
+curl -kv localhost:8080/transfer \
    -H "Accept: application/json" -H "Content-Type: application/json" \
-   --data '{"sender":"1c0c490f1b5528d8173c5de46d131160e4b2c0c3","message":"hello my friends"}'
+   --data '{"signerPub":"0xb4752b5bcd27605d33eae232ee3fda722f275568","signerPriv":"27f83a5f3a424724f1300f2b165cc5308a7ba5651ad51349e7c1b8ba6fef3753", "to":"0x5dB057b7AC171ac90dEd3616F3CDC606751E2090", "amount":10}'
+
+curl -kv localhost:8080/transfer \
+   -H "Accept: application/json" -H "Content-Type: application/json" \
+   --data '{"signerPub":"0x5dB057b7AC171ac90dEd3616F3CDC606751E2090","signerPriv":"66afa0574f10d015ffeaa124bdcbde29cdae75735a78ced7a3e5fb3af249061a", "to":"0x99a115368Fe89f179A13D9112911252304d8C77f", "amount":1}'
    
-curl -kv localhost:8080/block/1
+curl -kv localhost:8080/balances
 ```
 

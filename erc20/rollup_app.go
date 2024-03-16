@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -18,18 +19,9 @@ import (
 
 	astriaGrpc "buf.build/gen/go/astria/execution-apis/grpc/go/astria/execution/v1alpha2/executionv1alpha2grpc"
 	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
 	"github.com/rs/cors"
 	"google.golang.org/grpc"
 )
-
-var wsUpgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all connections
-	},
-}
 
 type Config struct {
 	SequencerRPC string `env:"SEQUENCER_RPC, required"`
@@ -41,27 +33,28 @@ type Config struct {
 
 // App is the main application struct, containing all the necessary components.
 type App struct {
-	executionRPC    string
-	sequencerRPC    string
-	sequencerClient SequencerClient
-	restRouter      *mux.Router
-	restAddr        string
-	rollupBlocks    *RollupBlocks
-	rollupName      string
-	rollupID        []byte
-	newBlockChan    chan Block
-	wsClients       WSClientList
+	executionRPC       string
+	sequencerRPC       string
+	sequencerClient    SequencerClient
+	restRouter         *mux.Router
+	restAddr           string
+	rollupBlocks       *RollupBlocks
+	rollupName         string
+	rollupID           []byte
+	newBlockChan       chan Block
+	erc20              *ERC20
+	lastBlockProcessed uint32
 	sync.RWMutex
 }
 
 func NewApp(cfg Config) *App {
 	log.Debugf("Creating new messenger app with config: %v", cfg)
 
-	newBlockChan := make(chan Block, 20)
-	rollupBlocks := NewRollupBlocks(newBlockChan)
-	router := mux.NewRouter()
-
 	rollupID := sha256.Sum256([]byte(cfg.RollupName))
+	newBlockChan := make(chan Block, 20)
+	chainId := new(big.Int).SetBytes(rollupID[:32])
+	rollupBlocks := NewRollupBlocks(newBlockChan, *chainId)
+	router := mux.NewRouter()
 
 	// sequencer private key
 	privateKeyBytes, err := hex.DecodeString(cfg.SeqPrivate)
@@ -70,17 +63,20 @@ func NewApp(cfg Config) *App {
 	}
 	private := ed25519.NewKeyFromSeed(privateKeyBytes)
 
+	erc20 := NewERC20()
+
 	return &App{
-		executionRPC:    cfg.ConductorRPC,
-		sequencerRPC:    cfg.SequencerRPC,
-		sequencerClient: *NewSequencerClient(cfg.SequencerRPC, rollupID[:], private),
-		restRouter:      router,
-		restAddr:        cfg.RESTApiPort,
-		rollupBlocks:    rollupBlocks,
-		rollupName:      cfg.RollupName,
-		rollupID:        rollupID[:],
-		newBlockChan:    newBlockChan,
-		wsClients:       make(WSClientList),
+		executionRPC:       cfg.ConductorRPC,
+		sequencerRPC:       cfg.SequencerRPC,
+		sequencerClient:    *NewSequencerClient(cfg.SequencerRPC, rollupID[:], private),
+		restRouter:         router,
+		restAddr:           cfg.RESTApiPort,
+		rollupBlocks:       rollupBlocks,
+		rollupName:         cfg.RollupName,
+		rollupID:           rollupID[:],
+		newBlockChan:       newBlockChan,
+		erc20:              erc20,
+		lastBlockProcessed: 0,
 	}
 }
 
@@ -92,7 +88,6 @@ func (a *App) makeExecutionServer() *ExecutionServiceServerV1Alpha2 {
 // setupRestRoutes sets up the routes for the REST API.
 func (a *App) setupRestRoutes() {
 	a.restRouter.HandleFunc("/block/{height}", a.getBlock).Methods("GET")
-	a.restRouter.HandleFunc("/ws", a.serveWS)
 	registerHandlers(a)
 }
 
@@ -137,36 +132,6 @@ func (a *App) getBlock(w http.ResponseWriter, r *http.Request) {
 	w.Write(blockJson)
 }
 
-func (a *App) serveWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := wsUpgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Errorf("Failed to upgrade HTTP to WebSocket: %v", err)
-		return
-	}
-
-	client := NewWSClient(conn, a)
-	a.addWSClient(client)
-	go client.WaitForMessages()
-	log.Debug("new ws client connected")
-}
-
-func (a *App) addWSClient(client *WSClient) {
-	a.Lock()
-	defer a.Unlock()
-	a.wsClients[client] = true
-}
-
-func (a *App) removeWSClient(client *WSClient) {
-	a.Lock()
-	defer a.Unlock()
-	if _, ok := a.wsClients[client]; ok {
-		// close connection
-		client.conn.Close()
-		// remove
-		delete(a.wsClients, client)
-	}
-}
-
 func (a *App) Run() {
 	// run execution api
 	go func() {
@@ -196,28 +161,36 @@ func (a *App) Run() {
 		}
 	}()
 
-	// send new messages to all connected ws clients
+	// have App sync with older blocks
+	// start with genesis tx
+	log.Infof("pre genesis process")
+	chainId := new(big.Int).SetBytes(a.rollupID[:32])
+	processTransaction(a, GenesisTransaction(*chainId))
+	log.Infof("post genesis process")
+
+	// process txs as we get them
 	go func() {
 		for block := range a.newBlockChan {
+			log.Infof("xxx start processing block height of %d", block.Height)
+
+			if block.Height != a.lastBlockProcessed+1 {
+				log.Fatalf("block received skipped a block, wanted %d, got %d", a.lastBlockProcessed+1, block.Height)
+				panic("block height err")
+			}
 			// only write blocks with transactions
 			if len(block.Txs) == 0 {
+				a.lastBlockProcessed = block.Height
 				continue
 			}
 
-			// decode transactions into format that the client can handle
-			txsJson := prepareBlockForClient(block.Txs)
+			for _, tx := range block.Txs {
+				processTransaction(a, tx)
+			}
 
-			if len(block.Txs) == 0 {
-				log.Info("post txs filtering no txs remaining")
-				continue
-			}
-			for client := range a.wsClients {
-				select {
-				case client.egress <- txsJson:
-				default:
-					log.Warnf("Could not send transactions to ws client: %s", txsJson)
-				}
-			}
+			log.Infof("finished processing block height of %d", block.Height)
+
+			a.lastBlockProcessed = block.Height
+
 		}
 	}()
 

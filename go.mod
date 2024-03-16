@@ -4,7 +4,7 @@ go 1.21.3
 
 require (
 	buf.build/gen/go/astria/astria/protocolbuffers/go v1.32.0-20240215175137-9570e0c3082f.1
-	buf.build/gen/go/astria/execution-apis/grpc/go v1.3.0-20240209225522-97e3bc68f856.2
+	buf.build/gen/go/astria/execution-apis/grpc/go v1.3.0-20240314225003-19f6b40c3e7b.2
 	buf.build/gen/go/astria/execution-apis/protocolbuffers/go v1.32.0-20240209225522-97e3bc68f856.1
 	github.com/astriaorg/go-sequencer-client v0.0.0-20240221205626-cf1140289aa1
 	github.com/cometbft/cometbft v0.37.0
@@ -13,8 +13,22 @@ require (
 	github.com/rs/cors v1.10.1
 	github.com/sethvargo/go-envconfig v1.0.0
 	github.com/sirupsen/logrus v1.9.0
-	google.golang.org/grpc v1.60.1
+	google.golang.org/grpc v1.62.1
 	google.golang.org/protobuf v1.32.0
+)
+
+require (
+	github.com/bits-and-blooms/bitset v1.10.0 // indirect
+	github.com/consensys/bavard v0.1.13 // indirect
+	github.com/consensys/gnark-crypto v0.12.1 // indirect
+	github.com/crate-crypto/go-kzg-4844 v0.7.0 // indirect
+	github.com/ethereum/c-kzg-4844 v0.4.0 // indirect
+	github.com/holiman/uint256 v1.2.4 // indirect
+	github.com/mmcloughlin/addchain v0.4.0 // indirect
+	github.com/supranational/blst v0.3.11 // indirect
+	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
+	golang.org/x/sync v0.6.0 // indirect
+	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
 require (
@@ -23,6 +37,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/cosmos/gogoproto v1.4.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
+	github.com/ethereum/go-ethereum v1.13.14
 	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.5.1 // indirect
@@ -39,9 +54,9 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/sasha-s/go-deadlock v0.3.1 // indirect
-	golang.org/x/crypto v0.14.0 // indirect
-	golang.org/x/net v0.16.0 // indirect
-	golang.org/x/sys v0.13.0 // indirect
-	golang.org/x/text v0.13.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20231002182017-d307bd883b97 // indirect
+	golang.org/x/crypto v0.18.0 // indirect
+	golang.org/x/net v0.20.0 // indirect
+	golang.org/x/sys v0.16.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240123012728-ef4313101c80 // indirect
 )

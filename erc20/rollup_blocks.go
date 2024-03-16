@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"errors"
+	"math/big"
 	"time"
 
 	astriaPb "buf.build/gen/go/astria/execution-apis/protocolbuffers/go/astria/execution/v1alpha2"
@@ -50,8 +51,8 @@ func (b *Block) ToPb() (*astriaPb.Block, error) {
 }
 
 // GenesisBlock creates the genesis block.
-func GenesisBlock() Block {
-	genesisTx := GenesisTransaction()
+func GenesisBlock(chainId big.Int) Block {
+	genesisTx := GenesisTransaction(chainId)
 
 	genesisHash, err := HashTxs([][]byte{genesisTx})
 	if err != nil {
@@ -78,9 +79,9 @@ type RollupBlocks struct {
 	NewBlockChan chan Block
 }
 
-func NewRollupBlocks(newBlockChan chan Block) *RollupBlocks {
+func NewRollupBlocks(newBlockChan chan Block, chainId big.Int) *RollupBlocks {
 	return &RollupBlocks{
-		Blocks:       []Block{GenesisBlock()},
+		Blocks:       []Block{GenesisBlock(chainId)},
 		soft:         0,
 		firm:         0,
 		NewBlockChan: newBlockChan,
