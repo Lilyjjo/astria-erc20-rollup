@@ -29,6 +29,8 @@ type Config struct {
 	RESTApiPort  string `env:"RESTAPI_PORT, required"`
 	RollupName   string `env:"ROLLUP_NAME, required"`
 	SeqPrivate   string `env:"SEQUENCER_PRIVATE, required"`
+	Erc20Owner   string `env:"ERC20_OWNER_ADDRESS, required"`
+	Erc20OwnerPk string `env:"ERC20_OWNER_PRIVATE, required"`
 }
 
 // App is the main application struct, containing all the necessary components.
@@ -53,7 +55,7 @@ func NewApp(cfg Config) *App {
 	rollupID := sha256.Sum256([]byte(cfg.RollupName))
 	newBlockChan := make(chan Block, 20)
 	chainId := new(big.Int).SetBytes(rollupID[:32])
-	rollupBlocks := NewRollupBlocks(newBlockChan, *chainId)
+	rollupBlocks := NewRollupBlocks(newBlockChan, *chainId, cfg.Erc20Owner, cfg.Erc20OwnerPk)
 	router := mux.NewRouter()
 
 	// sequencer private key
@@ -165,7 +167,7 @@ func (a *App) Run() {
 	// start with genesis tx
 	log.Infof("pre genesis process")
 	chainId := new(big.Int).SetBytes(a.rollupID[:32])
-	processTransaction(a, GenesisTransaction(*chainId))
+	processTransaction(a, GenesisTransaction(*chainId, "0xb4752b5Bcd27605d33EaE232EE3fda722f275568", "27f83a5f3a424724f1300f2b165cc5308a7ba5651ad51349e7c1b8ba6fef3753"))
 	log.Infof("post genesis process")
 
 	// process txs as we get them

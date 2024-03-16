@@ -208,12 +208,7 @@ func (a *App) getBalances(w http.ResponseWriter, r *http.Request) {
 }
 
 // create starting block for this rollup
-func GenesisTransaction(chainId big.Int) []byte {
-	// gather information needed to sign gensis block
-
-	ownersAddress := "0xb4752b5Bcd27605d33EaE232EE3fda722f275568"
-	privateKey := "27f83a5f3a424724f1300f2b165cc5308a7ba5651ad51349e7c1b8ba6fef3753" // :)
-
+func GenesisTransaction(chainId big.Int, owner string, ownerPk string) []byte {
 	// encode transaction for 'init' function which creates start of new ERC20 contract, similar to a constructor
 	abiObject, err := abi.JSON(strings.NewReader(functionABIs["initErc20"]))
 	if err != nil {
@@ -222,14 +217,14 @@ func GenesisTransaction(chainId big.Int) []byte {
 	}
 
 	// encode arguments
-	data, err := abiObject.Pack("initErc20", common.HexToAddress(ownersAddress))
+	data, err := abiObject.Pack("initErc20", common.HexToAddress(owner))
 	if err != nil {
 		log.Errorf("Error: %s", err)
 		panic(err)
 	}
 
 	// create and sign transaction
-	signedTx, err := SignTxn(privateKey, chainId, 0, data)
+	signedTx, err := SignTxn(ownerPk, chainId, 0, data)
 	if err != nil {
 		log.Errorf("Error: %s", err)
 		panic(err)

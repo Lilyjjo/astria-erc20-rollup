@@ -51,8 +51,8 @@ func (b *Block) ToPb() (*astriaPb.Block, error) {
 }
 
 // GenesisBlock creates the genesis block.
-func GenesisBlock(chainId big.Int) Block {
-	genesisTx := GenesisTransaction(chainId)
+func GenesisBlock(chainId big.Int, owner string, ownerPk string) Block {
+	genesisTx := GenesisTransaction(chainId, owner, ownerPk)
 
 	genesisHash, err := HashTxs([][]byte{genesisTx})
 	if err != nil {
@@ -79,9 +79,9 @@ type RollupBlocks struct {
 	NewBlockChan chan Block
 }
 
-func NewRollupBlocks(newBlockChan chan Block, chainId big.Int) *RollupBlocks {
+func NewRollupBlocks(newBlockChan chan Block, chainId big.Int, owner string, ownerPk string) *RollupBlocks {
 	return &RollupBlocks{
-		Blocks:       []Block{GenesisBlock(chainId)},
+		Blocks:       []Block{GenesisBlock(chainId, owner, ownerPk)},
 		soft:         0,
 		firm:         0,
 		NewBlockChan: newBlockChan,
