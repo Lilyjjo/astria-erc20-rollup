@@ -19,10 +19,15 @@ var functionABIs = map[string]string{
 	"initErc20": `[{ "type" : "function", "name" : "initErc20", "inputs" : [ { "name" : "owner", "type" : "address" } ] }]`,
 	"transfer":  `[{ "type" : "function", "name" : "transfer", "inputs" : [ { "name" : "_to", "type" : "address" },  { "name" : "_value", "type" : "uint64" }] }]`,
 }
-
 var functionSigs = map[string][4]byte{
 	"initErc20": {0x33, 0xb4, 0x2f, 0x4f}, // abi.encodeWithSignature("initErc20(address)")
 	"transfer":  {0x5d, 0x35, 0x9f, 0xbd}, // abi.encodeWithSignature("transfer(address,uint64)")
+}
+
+// register rollup specific handler
+func registerHandlers(a *App) {
+	a.restRouter.HandleFunc("/transfer", a.postTransfer).Methods("POST")
+	a.restRouter.HandleFunc("/balances", a.getBalances).Methods("GET")
 }
 
 type ERC20 struct {
@@ -38,14 +43,34 @@ func NewERC20() *ERC20 {
 	nonces := make(map[common.Address]uint64)
 
 	return &ERC20{
-		Owner:     nil,
+		Owner:     nil, // to be set in the genesis trasaction
 		Balances:  &balances,
 		Approvals: &approvals,
 		Nonces:    &nonces,
 	}
 }
 
-// this should be called as the genesis tx for the rollup
+// encode transaction into bytes to be sent to the sequencer
+func encodeTx(signedTx types.Transaction) ([]byte, error) {
+	encodedTx, err := signedTx.MarshalBinary()
+	if err != nil {
+		log.Errorf("error encoding transaction %v: %s\n", signedTx, err)
+		return nil, err
+	}
+	return encodedTx, nil
+}
+
+// decode transaction from bytes back into rollup format
+func decodeTx(txEncoded []byte) (*types.Transaction, error) {
+	tx := &types.Transaction{}
+	if err := tx.UnmarshalBinary(txEncoded); err != nil {
+		log.Errorf("error decoding transaction: %s\n", err)
+		return nil, err
+	}
+	return tx, nil
+}
+
+// erc20 constructor and genesis transaction logic
 func initErc20(erc20 *ERC20, owner common.Address) bool {
 	// ensure not already init'd
 	if erc20.Owner != nil {
@@ -64,6 +89,7 @@ func initErc20(erc20 *ERC20, owner common.Address) bool {
 	return true
 }
 
+// erc20 user function implementation
 func transfer(erc20 *ERC20, from common.Address, to common.Address, amount uint64) bool {
 	// check that from has enough balance
 	if (*erc20.Balances)[from] < amount {
@@ -80,6 +106,8 @@ func transfer(erc20 *ERC20, from common.Address, to common.Address, amount uint6
 	return true
 }
 
+// process transaction received from a sequencer's block
+// note: transactions could be malformed and are skipped if so
 func processTransaction(a *App, txEncoded []byte) {
 	// note: we ignore all tx elements execpt the nonce, signer, chainId, and data
 	log.Info("in processTransaction")
@@ -163,83 +191,6 @@ func processTransaction(a *App, txEncoded []byte) {
 	(*a.erc20.Nonces)[from] += 1
 }
 
-// register rollup specific handler
-func registerHandlers(a *App) {
-	a.restRouter.HandleFunc("/transfer", a.postTransfer).Methods("POST")
-	a.restRouter.HandleFunc("/balances", a.getBalances).Methods("GET")
-}
-
-// encode transaction into bytes to be sent to the sequencer
-func encodeTx(signedTx types.Transaction) ([]byte, error) {
-	encodedTx, err := signedTx.MarshalBinary()
-	if err != nil {
-		log.Errorf("error encoding transaction %v: %s\n", signedTx, err)
-		return nil, err
-	}
-	return encodedTx, nil
-}
-
-// decode transaction from bytes back into rollup format
-func decodeTx(txEncoded []byte) (*types.Transaction, error) {
-	tx := &types.Transaction{}
-	if err := tx.UnmarshalBinary(txEncoded); err != nil {
-		log.Errorf("error decoding transaction: %s\n", err)
-		return nil, err
-	}
-	return tx, nil
-}
-
-func (a *App) getBalances(w http.ResponseWriter, r *http.Request) {
-	log.Infof("processing getBalances")
-
-	// print to console also for debugging
-	for account, balance := range *a.erc20.Balances {
-		log.Infof("account: %s, balance: %d", account, balance)
-	}
-
-	balancesJson, err := json.Marshal(*a.erc20.Balances)
-	if err != nil {
-		log.Errorf("error marshalling balances: %s\n", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	w.Write(balancesJson)
-}
-
-// create starting block for this rollup
-func GenesisTransaction(chainId big.Int, owner string, ownerPk string) []byte {
-	// encode transaction for 'init' function which creates start of new ERC20 contract, similar to a constructor
-	abiObject, err := abi.JSON(strings.NewReader(functionABIs["initErc20"]))
-	if err != nil {
-		log.Errorf("Error: %s", err)
-		panic(err)
-	}
-
-	// encode arguments
-	data, err := abiObject.Pack("initErc20", common.HexToAddress(owner))
-	if err != nil {
-		log.Errorf("Error: %s", err)
-		panic(err)
-	}
-
-	// create and sign transaction
-	signedTx, err := SignTxn(ownerPk, chainId, 0, data)
-	if err != nil {
-		log.Errorf("Error: %s", err)
-		panic(err)
-	}
-
-	// rlp encode into byte string
-	encodedTx, err := encodeTx(*signedTx)
-	if err != nil {
-		log.Errorf("Error: %s", err)
-		panic(err)
-	}
-
-	return encodedTx
-}
-
 // send rollup message transfer
 type Transfer struct {
 	SignerPub  string `json:"signerPub"`
@@ -248,6 +199,7 @@ type Transfer struct {
 	Amount     uint64 `json:"amount"`
 }
 
+// http endpoint for crafting, signing, and broadcasting transfer() transaction to the sequencer
 func (a *App) postTransfer(w http.ResponseWriter, r *http.Request) {
 	log.Info("in postTransfer")
 	var transfer Transfer
@@ -304,6 +256,57 @@ func (a *App) postTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.WithField("responseCode", resp.Code).Debug("transaction submission result")
+}
+
+// create starting block for this rollup
+func GenesisTransaction(chainId big.Int, owner string, ownerPk string) []byte {
+	// encode transaction for 'init' function which creates start of new ERC20 contract, similar to a constructor
+	abiObject, err := abi.JSON(strings.NewReader(functionABIs["initErc20"]))
+	if err != nil {
+		log.Errorf("Error: %s", err)
+		panic(err)
+	}
+
+	// encode arguments
+	data, err := abiObject.Pack("initErc20", common.HexToAddress(owner))
+	if err != nil {
+		log.Errorf("Error: %s", err)
+		panic(err)
+	}
+
+	// create and sign transaction
+	signedTx, err := SignTxn(ownerPk, chainId, 0, data)
+	if err != nil {
+		log.Errorf("Error: %s", err)
+		panic(err)
+	}
+
+	// rlp encode into byte string
+	encodedTx, err := encodeTx(*signedTx)
+	if err != nil {
+		log.Errorf("Error: %s", err)
+		panic(err)
+	}
+
+	return encodedTx
+}
+
+func (a *App) getBalances(w http.ResponseWriter, r *http.Request) {
+	log.Infof("processing getBalances")
+
+	// print to console also for debugging
+	for account, balance := range *a.erc20.Balances {
+		log.Infof("account: %s, balance: %d", account, balance)
+	}
+
+	balancesJson, err := json.Marshal(*a.erc20.Balances)
+	if err != nil {
+		log.Errorf("error marshalling balances: %s\n", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(balancesJson)
 }
 
 func SignTxn(signersKey string, chainId big.Int, nonce uint64, data []byte) (*types.Transaction, error) {
