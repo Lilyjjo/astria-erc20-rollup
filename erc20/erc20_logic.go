@@ -14,7 +14,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// only encoding functions which mutate state, also only doing MVP of erc20 and skipping approve()/tranferFrom()
+// ERC20 functions (only doing MVP of erc20 and skipping approve/tranferFrom)
 var functionABIs = map[string]string{
 	"initErc20": `[{ "type" : "function", "name" : "initErc20", "inputs" : [ { "name" : "owner", "type" : "address" } ] }]`,
 	"transfer":  `[{ "type" : "function", "name" : "transfer", "inputs" : [ { "name" : "_to", "type" : "address" },  { "name" : "_value", "type" : "uint64" }] }]`,
@@ -202,6 +202,7 @@ type Transfer struct {
 // http endpoint for crafting, signing, and broadcasting transfer() transaction to the sequencer
 func (a *App) postTransfer(w http.ResponseWriter, r *http.Request) {
 	log.Info("in postTransfer")
+
 	var transfer Transfer
 	// decode transfer request
 	err := json.NewDecoder(r.Body).Decode(&transfer)
@@ -227,7 +228,8 @@ func (a *App) postTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// get next unprocessed nonce (repeat nonces can happen if multiple clients are used)
+	// get next unprocessed nonce (repeat nonces can happen if multiple clients are
+	// used or user tries to send multiple txs in same block)
 	publicKey := common.HexToAddress(transfer.SignerPub)
 	nonce := (*a.erc20.Nonces)[publicKey]
 

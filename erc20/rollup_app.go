@@ -101,6 +101,7 @@ func (a *App) makeRestServer() *http.Server {
 	}
 }
 
+// getBlock returns block from internal block cache to serve over http
 func (a *App) getBlock(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	heightStr, ok := vars["height"]
@@ -134,6 +135,7 @@ func (a *App) getBlock(w http.ResponseWriter, r *http.Request) {
 	w.Write(blockJson)
 }
 
+// runs ERC20 rollup app
 func (a *App) Run() {
 	// run execution api
 	go func() {
@@ -163,28 +165,30 @@ func (a *App) Run() {
 		}
 	}()
 
-	// have App sync with older blocks
-	// start with genesis tx
-	log.Infof("pre genesis process")
-	chainId := new(big.Int).SetBytes(a.rollupID[:32])
-	processTransaction(a, GenesisTransaction(*chainId, "0xb4752b5Bcd27605d33EaE232EE3fda722f275568", "27f83a5f3a424724f1300f2b165cc5308a7ba5651ad51349e7c1b8ba6fef3753"))
-	log.Infof("post genesis process")
+	// pre-load and process genesis transaction
+	genesisBlock, err := a.rollupBlocks.GetSingleBlock(0)
+	if err != nil {
+		log.Fatalf("failed to retreive gensis block: %v", err)
+	}
+	processTransaction(a, genesisBlock.Txs[0])
 
-	// process txs as we get them
+	// process blocks as we get them
 	go func() {
 		for block := range a.newBlockChan {
-			log.Infof("xxx start processing block height of %d", block.Height)
+			log.Infof("start processing block height of %d", block.Height)
 
 			if block.Height != a.lastBlockProcessed+1 {
 				log.Fatalf("block received skipped a block, wanted %d, got %d", a.lastBlockProcessed+1, block.Height)
 				panic("block height err")
 			}
+
 			// only write blocks with transactions
 			if len(block.Txs) == 0 {
 				a.lastBlockProcessed = block.Height
 				continue
 			}
 
+			// process individual transactions
 			for _, tx := range block.Txs {
 				processTransaction(a, tx)
 			}

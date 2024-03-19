@@ -52,7 +52,6 @@ You might need to rebuild the rollup docker images
 just docker-build
 ```
 
-# Warning: incomplete design
-
-This rollup is missing the ability to deterministcally re-build its state from the sequencer. The plan is to implement this via calls to the sequencer's service [`SequencerService::GetFilteredSequencerBlock`](https://github.com/astriaorg/astria/blob/8a23685831ee76ff53c284734a5948f142424867/proto/sequencerapis/astria/sequencer/v1/service.proto#L29) but has not been implemented yet. 
+# Warning: do not have users pass in their pk's
+This app has users passing in their pk's to sign over the ethereum txs. Instead we should provide users code that builds and signs the txs before transmission to our rollup server.
 
